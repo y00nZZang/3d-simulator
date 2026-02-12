@@ -1,0 +1,1125 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D 적재 시뮬레이터</title>
+    <style>
+      :root {
+        --bg: #f3f4f6;
+        --panel: rgba(255, 255, 255, 0.94);
+        --line: #d1d5db;
+        --ink: #0f172a;
+        --ok: #0f766e;
+        --bad: #b91c1c;
+        --accent: #0369a1;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: radial-gradient(circle at 12% 18%, #ffffff, var(--bg));
+        color: var(--ink);
+        font-family: "Pretendard", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+      }
+      #app {
+        width: 100%;
+        height: 100%;
+      }
+      .panel {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 10;
+        width: min(400px, calc(100vw - 24px));
+        max-height: calc(100vh - 24px);
+        overflow: auto;
+        padding: 14px;
+        border-radius: 14px;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        background: var(--panel);
+        backdrop-filter: blur(6px);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.14);
+      }
+      .panel h1 {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+      .section {
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+      }
+      .section h2 {
+        margin: 0 0 8px;
+        font-size: 14px;
+      }
+      .grid {
+        display: grid;
+        gap: 8px;
+      }
+      .grid.cols-2 {
+        grid-template-columns: 1fr 1fr;
+      }
+      label {
+        display: grid;
+        gap: 4px;
+        font-size: 12px;
+      }
+      .checkline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 8px;
+        font-size: 12px;
+      }
+      input,
+      select,
+      button {
+        width: 100%;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 7px 9px;
+        font-size: 12px;
+        background: #fff;
+      }
+      input[type="checkbox"] {
+        width: auto;
+        border: 0;
+        padding: 0;
+        accent-color: var(--accent);
+      }
+      button {
+        font-weight: 700;
+        cursor: pointer;
+      }
+      button.primary {
+        border-color: #bae6fd;
+        background: #e0f2fe;
+        color: #0c4a6e;
+      }
+      button.warn {
+        border-color: #fecaca;
+        background: #fef2f2;
+        color: #991b1b;
+      }
+      .toolbar {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .toolbar button.active {
+        border-color: #7dd3fc;
+        background: #e0f2fe;
+        color: #0c4a6e;
+      }
+      .status {
+        margin-top: 10px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .status.ok {
+        background: rgba(15, 118, 110, 0.12);
+        color: var(--ok);
+      }
+      .status.fail {
+        background: rgba(185, 28, 28, 0.12);
+        color: var(--bad);
+      }
+      .list {
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        max-height: 160px;
+        overflow: auto;
+      }
+      .list button {
+        border: 0;
+        border-bottom: 1px solid var(--line);
+        border-radius: 0;
+        text-align: left;
+        font-weight: 500;
+      }
+      .list button:last-child {
+        border-bottom: 0;
+      }
+      .list button.active {
+        background: #e0f2fe;
+        color: #0c4a6e;
+        font-weight: 700;
+      }
+      .mono {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      }
+      .hint {
+        margin: 6px 0 0;
+        font-size: 11px;
+        color: #334155;
+      }
+      @media (max-width: 800px) {
+        .panel {
+          max-height: 52vh;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <aside class="panel">
+      <h1>3D 트렁크 적재 시뮬레이터</h1>
+      <p class="hint mono">차량 골격: Hiace Van (V3) 4.695 x 1.695 x 1.98 m</p>
+      <div id="status" class="status fail">계산 중...</div>
+
+      <section class="section">
+        <h2>트렁크 사이즈 (m)</h2>
+        <div class="grid cols-2">
+          <label>길이 X<input id="trunkX" type="number" min="0.2" step="0.01" value="1.48" /></label>
+          <label>너비 Y<input id="trunkY" type="number" min="0.2" step="0.01" value="1.55" /></label>
+          <label>높이 Z<input id="trunkZ" type="number" min="0.2" step="0.01" value="1.34" /></label>
+          <label>&nbsp;<button id="applyTrunk" class="primary">트렁크 적용</button></label>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>짐 추가 (m)</h2>
+        <div class="grid cols-2">
+          <label>이름<input id="cargoName" type="text" value="보드백" /></label>
+          <label>개수<input id="cargoCount" type="number" min="1" max="100" step="1" value="7" /></label>
+          <label>길이<input id="cargoL" type="number" min="0.01" step="0.01" value="1.7" /></label>
+          <label>너비<input id="cargoW" type="number" min="0.01" step="0.01" value="0.35" /></label>
+          <label>높이<input id="cargoH" type="number" min="0.01" step="0.01" value="0.15" /></label>
+          <label>&nbsp;<button id="addCargo" class="primary">짐 추가</button></label>
+        </div>
+        <label class="checkline">
+          <input id="cargoFlat" type="checkbox" checked />
+          바닥면 아래 우선(자동 배치 시 눕힘 선호)
+        </label>
+        <p class="hint">길이/너비/높이를 입력하세요. 데크백/보드백은 기본적으로 눕혀 배치합니다.</p>
+      </section>
+
+      <section class="section">
+        <h2>짐 목록</h2>
+        <div id="cargoList" class="list"></div>
+        <div class="grid cols-2" style="margin-top: 8px">
+          <button id="removeCargo" class="warn">선택 짐 삭제</button>
+          <button id="clearCargo">전체 삭제</button>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>선택 짐 위치 (m)</h2>
+        <div class="grid cols-2">
+          <label>X<input id="posX" type="range" min="-2" max="2" step="0.01" value="0" /></label>
+          <label>Y<input id="posY" type="range" min="-2" max="2" step="0.01" value="0" /></label>
+          <label>Z<input id="posZ" type="range" min="-2" max="2" step="0.01" value="0" /></label>
+          <label class="mono" id="posReadout">0.00, 0.00, 0.00</label>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>선택 짐 각도 (deg)</h2>
+        <div class="grid cols-2">
+          <label>Rx<input id="rotX" type="range" min="-85" max="85" step="1" value="0" /></label>
+          <label>Ry<input id="rotY" type="range" min="-85" max="85" step="1" value="0" /></label>
+          <label>Rz<input id="rotZ" type="range" min="-85" max="85" step="1" value="0" /></label>
+          <label class="mono" id="rotReadout">0, 0, 0</label>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>직접 조작</h2>
+        <div class="toolbar">
+          <button id="toolTranslate" class="active">이동 (T)</button>
+          <button id="toolRotate">회전 (R)</button>
+        </div>
+        <label class="checkline">
+          <input id="showAxes" type="checkbox" checked />
+          3축 표시 (X/Y/Z)
+        </label>
+        <button id="focusTrunk" style="margin-top: 8px">트렁크 중심 보기</button>
+        <p class="hint">좌클릭 드래그: 조작, 우클릭 드래그: 화면 이동, 휠: 확대/축소</p>
+      </section>
+
+      <section class="section">
+        <h2>자동 배치</h2>
+        <div class="grid cols-2">
+          <label>아이템 간격 (m)<input id="autoGap" type="number" min="0" max="0.2" step="0.005" value="0.01" /></label>
+          <label>&nbsp;<button id="autoArrange" class="primary">자동 배치 실행</button></label>
+        </div>
+        <p class="hint">생성된 시나리오를 클릭하면 해당 방식으로 즉시 배치됩니다.</p>
+        <div id="arrangementList" class="list"></div>
+        <button id="loadBoardPreset">보드백 7개 프리셋 로드</button>
+      </section>
+    </aside>
+
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+    <script>
+      window.__simReady = false;
+      window.setTimeout(() => {
+        const status = document.getElementById("status");
+        if (!window.__simReady && status && status.textContent.includes("계산 중")) {
+          status.className = "status fail";
+          status.textContent = "초기화 실패: 브라우저 콘솔(F12) 오류를 확인해주세요.";
+        }
+      }, 2500);
+    </script>
+    <script type="module">
+      import * as THREE from "three";
+      import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+      import { TransformControls } from "three/addons/controls/TransformControls.js";
+
+      const appEl = document.getElementById("app");
+      const statusEl = document.getElementById("status");
+      const cargoListEl = document.getElementById("cargoList");
+      const arrangementListEl = document.getElementById("arrangementList");
+
+      const inputs = {
+        trunkX: document.getElementById("trunkX"),
+        trunkY: document.getElementById("trunkY"),
+        trunkZ: document.getElementById("trunkZ"),
+        cargoName: document.getElementById("cargoName"),
+        cargoCount: document.getElementById("cargoCount"),
+        cargoL: document.getElementById("cargoL"),
+        cargoW: document.getElementById("cargoW"),
+        cargoH: document.getElementById("cargoH"),
+        cargoFlat: document.getElementById("cargoFlat"),
+        posX: document.getElementById("posX"),
+        posY: document.getElementById("posY"),
+        posZ: document.getElementById("posZ"),
+        rotX: document.getElementById("rotX"),
+        rotY: document.getElementById("rotY"),
+        rotZ: document.getElementById("rotZ"),
+        posReadout: document.getElementById("posReadout"),
+        rotReadout: document.getElementById("rotReadout"),
+        autoGap: document.getElementById("autoGap"),
+        showAxes: document.getElementById("showAxes")
+      };
+
+      const state = {
+        trunkSize: new THREE.Vector3(1.48, 1.55, 1.34),
+        cargoItems: [],
+        selectedId: null,
+        arrangementScenarios: [],
+        activeScenarioIndex: -1
+      };
+
+      let uid = 0;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xf3f4f6);
+
+      const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.01, 100);
+      camera.up.set(0, 0, 1);
+      camera.position.set(6.2, -4.3, 3.6);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      appEl.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.target.set(0, 0, 0);
+      controls.enablePan = true;
+      controls.screenSpacePanning = true;
+      controls.minDistance = 0.4;
+      controls.maxDistance = 40;
+      controls.minPolarAngle = 0.35;
+      controls.maxPolarAngle = 1.45;
+
+      const transformControls = new TransformControls(camera, renderer.domElement);
+      transformControls.setMode("translate");
+      transformControls.setSpace("world");
+      transformControls.rotationSnap = THREE.MathUtils.degToRad(5);
+      scene.add(transformControls);
+      transformControls.addEventListener("dragging-changed", (ev) => {
+        controls.enabled = !ev.value;
+      });
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0xd1d5db, 1.15));
+      const key = new THREE.DirectionalLight(0xffffff, 0.95);
+      key.position.set(2.7, 2.3, 3.1);
+      scene.add(key);
+
+      const originMarker = new THREE.Mesh(
+        new THREE.SphereGeometry(0.035, 16, 12),
+        new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.25, metalness: 0.15 })
+      );
+      originMarker.position.set(0, 0, 0);
+      scene.add(originMarker);
+
+      const trunkGroup = new THREE.Group();
+      scene.add(trunkGroup);
+      const vanGroup = new THREE.Group();
+      scene.add(vanGroup);
+
+      const hiaceV3 = {
+        length: 4.695,
+        width: 1.695,
+        height: 1.98,
+        wheelbase: 2.57,
+        frontOverhang: 1.05,
+        rearOverhang: 1.075
+      };
+
+      let trunkFillMesh = null;
+      let trunkEdge = null;
+
+      function addVanFrameBox(group, sx, sy, sz, px, py, pz, color) {
+        const edge = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.BoxGeometry(sx, sy, sz)),
+          new THREE.LineBasicMaterial({ color })
+        );
+        edge.position.set(px, py, pz);
+        group.add(edge);
+      }
+
+      function addVanLine(group, from, to, color) {
+        const geom = new THREE.BufferGeometry().setFromPoints([from, to]);
+        const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color }));
+        group.add(line);
+      }
+
+      function buildVan() {
+        vanGroup.clear();
+
+        const rearPlane = -state.trunkSize.x / 2 - 0.12;
+        vanGroup.position.set(rearPlane + hiaceV3.length / 2, 0, 0.16);
+
+        const frameColor = 0x475569;
+        const accentColor = 0x0f172a;
+        const shellY = hiaceV3.width / 2;
+        const shellZ = hiaceV3.height / 2;
+        const rearX = -hiaceV3.length / 2;
+        const frontX = hiaceV3.length / 2;
+
+        // 외곽 차체 윤곽.
+        addVanFrameBox(vanGroup, hiaceV3.length, hiaceV3.width, hiaceV3.height, 0, 0, 0, frameColor);
+        addVanFrameBox(vanGroup, hiaceV3.length * 0.86, hiaceV3.width * 0.96, hiaceV3.height * 0.66, -0.08, 0, 0.24, frameColor);
+        addVanFrameBox(vanGroup, hiaceV3.length * 0.2, hiaceV3.width * 0.92, hiaceV3.height * 0.42, frontX - 0.42, 0, 0.02, frameColor);
+
+        // 후방 해치 프레임 (트렁크 크기에 연동).
+        const hatchMarginY = 0.14;
+        const hatchMarginZ = 0.18;
+        addVanFrameBox(
+          vanGroup,
+          0.03,
+          Math.min(hiaceV3.width - 0.08, state.trunkSize.y + hatchMarginY),
+          Math.min(hiaceV3.height - 0.14, state.trunkSize.z + hatchMarginZ),
+          rearX + 0.02,
+          0,
+          -0.03,
+          accentColor
+        );
+
+        // 필러, 루프 보우 골격 라인.
+        const pillarXs = [rearX + 0.42, -0.95, -0.15, 0.92];
+        for (const px of pillarXs) {
+          addVanLine(
+            vanGroup,
+            new THREE.Vector3(px, shellY - 0.02, -0.24),
+            new THREE.Vector3(px, shellY - 0.02, shellZ - 0.1),
+            accentColor
+          );
+          addVanLine(
+            vanGroup,
+            new THREE.Vector3(px, -shellY + 0.02, -0.24),
+            new THREE.Vector3(px, -shellY + 0.02, shellZ - 0.1),
+            accentColor
+          );
+        }
+
+        const roofBows = [rearX + 0.65, rearX + 1.35, rearX + 2.05, rearX + 2.75, rearX + 3.4];
+        for (const bx of roofBows) {
+          addVanLine(
+            vanGroup,
+            new THREE.Vector3(bx, -shellY + 0.05, shellZ - 0.06),
+            new THREE.Vector3(bx, shellY - 0.05, shellZ - 0.06),
+            frameColor
+          );
+        }
+      }
+
+      function buildTrunk() {
+        if (trunkFillMesh) trunkGroup.remove(trunkFillMesh);
+        if (trunkEdge) trunkGroup.remove(trunkEdge);
+
+        const { x, y, z } = state.trunkSize;
+        trunkFillMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(x, y, z),
+          new THREE.MeshPhysicalMaterial({
+            color: 0xbfdbfe,
+            transparent: true,
+            opacity: 0.2,
+            transmission: 0.4,
+            roughness: 0.2
+          })
+        );
+        trunkEdge = new THREE.LineSegments(
+          new THREE.EdgesGeometry(new THREE.BoxGeometry(x, y, z)),
+          new THREE.LineBasicMaterial({ color: 0x0f172a })
+        );
+        trunkGroup.add(trunkFillMesh);
+        trunkGroup.add(trunkEdge);
+
+        buildVan();
+        controls.target.set(0, 0, 0);
+      }
+
+      function randColor(id) {
+        const hue = (id * 47) % 360;
+        return new THREE.Color(`hsl(${hue}, 70%, 45%)`);
+      }
+
+      function deg(v) {
+        return THREE.MathUtils.radToDeg(v);
+      }
+
+      function rad(v) {
+        return THREE.MathUtils.degToRad(v);
+      }
+
+      function normalizeDeg(v) {
+        return ((v + 180) % 360 + 360) % 360 - 180;
+      }
+
+      function clampNum(v, min, max) {
+        return Math.max(min, Math.min(max, v));
+      }
+
+      function formatM(v) {
+        return `${v.toFixed(2)}m`;
+      }
+
+      function isDeckLikeName(name) {
+        return /(데크백|보드백|deck|board)/i.test(name);
+      }
+
+      function createCargoItem({ name, size, preferFlat }) {
+        const id = ++uid;
+        const geometry = new THREE.BoxGeometry(size.x, size.y, size.z);
+        const baseColor = randColor(id);
+        const material = new THREE.MeshStandardMaterial({ color: baseColor, roughness: 0.58, metalness: 0.08 });
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+        return {
+          id,
+          name,
+          size: size.clone(),
+          mesh,
+          baseColor,
+          position: new THREE.Vector3(0, 0, 0),
+          rotation: new THREE.Euler(0, 0, 0),
+          preferFlat,
+          fits: false
+        };
+      }
+
+      function boxInsideTrunk(box) {
+        const t = state.trunkSize;
+        return (
+          box.min.x >= -t.x / 2 &&
+          box.max.x <= t.x / 2 &&
+          box.min.y >= -t.y / 2 &&
+          box.max.y <= t.y / 2 &&
+          box.min.z >= -t.z / 2 &&
+          box.max.z <= t.z / 2
+        );
+      }
+
+      function syncMeshesFromItems() {
+        for (const item of state.cargoItems) {
+          item.mesh.position.copy(item.position);
+          item.mesh.rotation.copy(item.rotation);
+        }
+      }
+
+      function computeCargoMetrics(assignFits = false) {
+        const boxes = state.cargoItems.map((item) => new THREE.Box3().setFromObject(item.mesh));
+        const colliding = new Array(state.cargoItems.length).fill(false);
+
+        for (let i = 0; i < boxes.length; i += 1) {
+          for (let j = i + 1; j < boxes.length; j += 1) {
+            if (boxes[i].intersectsBox(boxes[j])) {
+              colliding[i] = true;
+              colliding[j] = true;
+            }
+          }
+        }
+
+        let fitCount = 0;
+        let collisionCount = 0;
+        let zScore = 0;
+        for (let i = 0; i < state.cargoItems.length; i += 1) {
+          const inTrunk = boxInsideTrunk(boxes[i]);
+          const fits = inTrunk && !colliding[i];
+          if (fits) fitCount += 1;
+          if (colliding[i]) collisionCount += 1;
+          zScore += state.cargoItems[i].position.z;
+          if (assignFits) state.cargoItems[i].fits = fits;
+        }
+
+        return {
+          fitCount,
+          collisionCount,
+          avgZ: state.cargoItems.length ? zScore / state.cargoItems.length : 0,
+          colliding
+        };
+      }
+
+      function clearArrangementScenarios() {
+        state.arrangementScenarios = [];
+        state.activeScenarioIndex = -1;
+        renderArrangementScenarios();
+      }
+
+      function renderArrangementScenarios() {
+        arrangementListEl.innerHTML = "";
+        if (!state.arrangementScenarios.length) return;
+        for (let i = 0; i < state.arrangementScenarios.length; i += 1) {
+          const scenario = state.arrangementScenarios[i];
+          const b = document.createElement("button");
+          b.textContent = `${i + 1}. ${scenario.name} (${scenario.fitCount}/${state.cargoItems.length}, 충돌 ${scenario.collisionCount})`;
+          if (i === state.activeScenarioIndex) b.classList.add("active");
+          b.title = scenario.description;
+          b.addEventListener("click", () => applyArrangementScenario(i));
+          arrangementListEl.appendChild(b);
+        }
+      }
+
+      function refreshCargoVisual() {
+        syncMeshesFromItems();
+        const metrics = computeCargoMetrics(true);
+
+        for (let i = 0; i < state.cargoItems.length; i += 1) {
+          const item = state.cargoItems[i];
+          const selected = item.id === state.selectedId;
+          item.mesh.material.color.copy(item.baseColor);
+          if (!item.fits) {
+            item.mesh.material.emissive.setHex(selected ? 0x991b1b : 0x7f1d1d);
+            item.mesh.material.emissiveIntensity = selected ? 0.72 : 0.48;
+          } else if (selected) {
+            item.mesh.material.emissive.setHex(0x334155);
+            item.mesh.material.emissiveIntensity = 0.38;
+          } else {
+            item.mesh.material.emissive.setHex(0x000000);
+            item.mesh.material.emissiveIntensity = 0;
+          }
+        }
+
+        statusEl.className = `status ${metrics.fitCount === state.cargoItems.length ? "ok" : "fail"}`;
+        statusEl.textContent = `${metrics.fitCount}/${state.cargoItems.length}개 적재 적합, 충돌 ${metrics.collisionCount}개`;
+        if (state.cargoItems.length === 0) {
+          statusEl.className = "status fail";
+          statusEl.textContent = "짐이 없습니다.";
+        }
+      }
+
+      function refreshCargoList() {
+        cargoListEl.innerHTML = "";
+        for (const item of state.cargoItems) {
+          const b = document.createElement("button");
+          b.textContent = `${item.name} #${item.id} (${item.size.x.toFixed(2)} x ${item.size.y.toFixed(2)} x ${item.size.z.toFixed(2)})`;
+          if (item.id === state.selectedId) b.classList.add("active");
+          b.addEventListener("click", () => {
+            state.selectedId = item.id;
+            syncTransformGizmo();
+            syncTransformUI();
+            refreshCargoList();
+            refreshCargoVisual();
+          });
+          cargoListEl.appendChild(b);
+        }
+      }
+
+      function getSelectedItem() {
+        return state.cargoItems.find((i) => i.id === state.selectedId) || null;
+      }
+
+      function syncTransformGizmo() {
+        const selected = getSelectedItem();
+        if (!selected) {
+          transformControls.detach();
+          return;
+        }
+        if (transformControls.object !== selected.mesh) {
+          transformControls.attach(selected.mesh);
+        }
+      }
+
+      function setTransformMode(mode) {
+        transformControls.setMode(mode);
+        if (mode === "rotate") {
+          transformControls.setSpace("local");
+          transformControls.rotationSnap = rad(5);
+        } else {
+          transformControls.setSpace("world");
+          transformControls.rotationSnap = null;
+        }
+        const tBtn = document.getElementById("toolTranslate");
+        const rBtn = document.getElementById("toolRotate");
+        tBtn.classList.toggle("active", mode === "translate");
+        rBtn.classList.toggle("active", mode === "rotate");
+      }
+
+      function clampItemRotation(item) {
+        const limit = 85;
+        const rx = clampNum(normalizeDeg(deg(item.rotation.x)), -limit, limit);
+        const ry = clampNum(normalizeDeg(deg(item.rotation.y)), -limit, limit);
+        const rz = clampNum(normalizeDeg(deg(item.rotation.z)), -limit, limit);
+        item.rotation.set(rad(rx), rad(ry), rad(rz));
+      }
+
+      transformControls.addEventListener("objectChange", () => {
+        const item = getSelectedItem();
+        if (!item || !transformControls.object) return;
+        if (state.arrangementScenarios.length) clearArrangementScenarios();
+        item.position.copy(transformControls.object.position);
+        item.rotation.copy(transformControls.object.rotation);
+        if (transformControls.getMode() === "rotate") {
+          clampItemRotation(item);
+          transformControls.object.rotation.copy(item.rotation);
+        }
+        syncTransformUI();
+        refreshCargoVisual();
+      });
+
+      function syncTransformUI() {
+        const item = getSelectedItem();
+        if (!item) {
+          syncTransformGizmo();
+          inputs.posReadout.textContent = "-";
+          inputs.rotReadout.textContent = "-";
+          return;
+        }
+        syncTransformGizmo();
+
+        const tx = state.trunkSize.x / 2;
+        const ty = state.trunkSize.y / 2;
+        const tz = state.trunkSize.z / 2;
+        inputs.posX.min = (-tx).toFixed(2);
+        inputs.posX.max = tx.toFixed(2);
+        inputs.posY.min = (-ty).toFixed(2);
+        inputs.posY.max = ty.toFixed(2);
+        inputs.posZ.min = (-tz).toFixed(2);
+        inputs.posZ.max = tz.toFixed(2);
+
+        inputs.posX.value = item.position.x.toFixed(2);
+        inputs.posY.value = item.position.y.toFixed(2);
+        inputs.posZ.value = item.position.z.toFixed(2);
+        inputs.rotX.value = deg(item.rotation.x).toFixed(0);
+        inputs.rotY.value = deg(item.rotation.y).toFixed(0);
+        inputs.rotZ.value = deg(item.rotation.z).toFixed(0);
+        inputs.posReadout.textContent = `${item.position.x.toFixed(2)}, ${item.position.y.toFixed(2)}, ${item.position.z.toFixed(2)}`;
+        inputs.rotReadout.textContent = `${deg(item.rotation.x).toFixed(0)}, ${deg(item.rotation.y).toFixed(0)}, ${deg(item.rotation.z).toFixed(0)}`;
+      }
+
+      function applySelectedTransformFromUI() {
+        const item = getSelectedItem();
+        if (!item) return;
+        if (state.arrangementScenarios.length) clearArrangementScenarios();
+        item.position.set(Number(inputs.posX.value), Number(inputs.posY.value), Number(inputs.posZ.value));
+        item.rotation.set(rad(Number(inputs.rotX.value)), rad(Number(inputs.rotY.value)), rad(Number(inputs.rotZ.value)));
+        clampItemRotation(item);
+        syncTransformUI();
+        refreshCargoVisual();
+      }
+
+      function addCargo(name, count, size, preferFlat = false) {
+        for (let i = 0; i < count; i += 1) {
+          const item = createCargoItem({ name, size, preferFlat });
+          item.position.set(0, 0, 0);
+          state.cargoItems.push(item);
+        }
+        if (!getSelectedItem() && state.cargoItems.length > 0) {
+          state.selectedId = state.cargoItems[0].id;
+        }
+        clearArrangementScenarios();
+        refreshCargoList();
+        syncTransformUI();
+        refreshCargoVisual();
+      }
+
+      function removeSelectedCargo() {
+        const idx = state.cargoItems.findIndex((i) => i.id === state.selectedId);
+        if (idx < 0) return;
+        scene.remove(state.cargoItems[idx].mesh);
+        state.cargoItems.splice(idx, 1);
+        state.selectedId = state.cargoItems.length ? state.cargoItems[0].id : null;
+        clearArrangementScenarios();
+        refreshCargoList();
+        syncTransformUI();
+        refreshCargoVisual();
+      }
+
+      function clearAllCargo() {
+        for (const item of state.cargoItems) scene.remove(item.mesh);
+        state.cargoItems.length = 0;
+        state.selectedId = null;
+        clearArrangementScenarios();
+        refreshCargoList();
+        syncTransformUI();
+        refreshCargoVisual();
+      }
+
+      function rotatedAabbSize(size, rotationEuler) {
+        const half = new THREE.Vector3(size.x / 2, size.y / 2, size.z / 2);
+        const m = new THREE.Matrix4().makeRotationFromEuler(rotationEuler);
+        const e = m.elements;
+        const ax = new THREE.Vector3(Math.abs(e[0]), Math.abs(e[4]), Math.abs(e[8]));
+        const ay = new THREE.Vector3(Math.abs(e[1]), Math.abs(e[5]), Math.abs(e[9]));
+        const az = new THREE.Vector3(Math.abs(e[2]), Math.abs(e[6]), Math.abs(e[10]));
+        return new THREE.Vector3(
+          2 * (ax.dot(half)),
+          2 * (ay.dot(half)),
+          2 * (az.dot(half))
+        );
+      }
+
+      const arrangementStrategies = [
+        { id: "balanced", name: "균형 탐색", description: "기울임/회전을 폭넓게 탐색해 전체 적재율을 우선합니다." },
+        { id: "parallelDiagonal", name: "차체 평행 + 대각 세움", description: "차체 길이축과 평행하게 두고 위로 대각 세움 배치를 시도합니다." },
+        { id: "flatStack", name: "눕힘 적층", description: "가능한 눕혀서 층층이 적재하는 방식을 우선합니다." }
+      ];
+
+      function pushRotationCandidate(list, seen, rxDeg, ryDeg, rzDeg, isFlat) {
+        const key = `${rxDeg}|${ryDeg}|${rzDeg}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push({
+          rotation: new THREE.Euler(rad(rxDeg), rad(ryDeg), rad(rzDeg), "XYZ"),
+          isFlat,
+          rxDeg,
+          ryDeg,
+          rzDeg
+        });
+      }
+
+      function getRotationCandidates(item, strategyId) {
+        const seen = new Set();
+        const candidates = [];
+
+        if (strategyId === "parallelDiagonal") {
+          // 차체와 평행(길이축 x) 유지: rz=0으로 고정, y축으로만 기울여 대각 세움 시도.
+          for (let ry = 25; ry <= 80; ry += 5) {
+            pushRotationCandidate(candidates, seen, 0, ry, 0, false);
+            pushRotationCandidate(candidates, seen, 0, -ry, 0, false);
+          }
+          pushRotationCandidate(candidates, seen, 0, 0, 0, true);
+          return candidates;
+        }
+
+        if (strategyId === "flatStack") {
+          for (let rz = -90; rz <= 90; rz += 5) {
+            pushRotationCandidate(candidates, seen, 0, 0, rz, true);
+          }
+          pushRotationCandidate(candidates, seen, 0, 0, 0, true);
+          return candidates;
+        }
+
+        // 기본 균형 탐색
+        for (let rz = -90; rz <= 90; rz += 5) {
+          pushRotationCandidate(candidates, seen, 0, 0, rz, true);
+        }
+        for (let rx = -75; rx <= 75; rx += 15) {
+          for (let ry = -75; ry <= 75; ry += 15) {
+            if (Math.abs(rx) + Math.abs(ry) < 10) continue;
+            for (let rz = -90; rz <= 90; rz += 15) {
+              pushRotationCandidate(candidates, seen, rx, ry, rz, false);
+            }
+          }
+        }
+        pushRotationCandidate(candidates, seen, 0, 0, 0, true);
+        return candidates;
+      }
+
+      function simulateShelfPlacementXYZ(span, layout, trunkSize, gap) {
+        const cursor = layout.cursor.clone();
+        let rowMaxY = layout.rowMaxY;
+        let layerMaxZ = layout.layerMaxZ;
+
+        if (cursor.x + span.x > trunkSize.x / 2 + 1e-8) {
+          cursor.x = -trunkSize.x / 2;
+          cursor.y += rowMaxY + gap;
+          rowMaxY = 0;
+        }
+
+        if (cursor.y + span.y > trunkSize.y / 2 + 1e-8) {
+          cursor.x = -trunkSize.x / 2;
+          cursor.y = -trunkSize.y / 2;
+          cursor.z += layerMaxZ + gap;
+          rowMaxY = 0;
+          layerMaxZ = 0;
+        }
+
+        if (cursor.z + span.z > trunkSize.z / 2 + 1e-8) return null;
+
+        return {
+          position: new THREE.Vector3(cursor.x + span.x / 2, cursor.y + span.y / 2, cursor.z + span.z / 2),
+          nextCursor: new THREE.Vector3(cursor.x + span.x + gap, cursor.y, cursor.z),
+          rowMaxY: Math.max(rowMaxY, span.y),
+          layerMaxZ: Math.max(layerMaxZ, span.z)
+        };
+      }
+
+      function simulateShelfPlacementYZ(span, layout, trunkSize, gap) {
+        let yCursor = layout.yCursor;
+        let zCursor = layout.zCursor;
+        let rowMaxZ = layout.rowMaxZ;
+
+        if (yCursor + span.y > trunkSize.y / 2 + 1e-8) {
+          yCursor = -trunkSize.y / 2;
+          zCursor += rowMaxZ + gap;
+          rowMaxZ = 0;
+        }
+        if (zCursor + span.z > trunkSize.z / 2 + 1e-8) return null;
+        if (span.x > trunkSize.x + 1e-8) return null;
+
+        return {
+          position: new THREE.Vector3(0, yCursor + span.y / 2, zCursor + span.z / 2),
+          nextYCursor: yCursor + span.y + gap,
+          nextZCursor: zCursor,
+          rowMaxZ: Math.max(rowMaxZ, span.z)
+        };
+      }
+
+      function choosePlacementForItem(item, layout, gap, strategyId) {
+        const t = state.trunkSize;
+        const candidates = getRotationCandidates(item, strategyId);
+        let best = null;
+
+        for (const candidate of candidates) {
+          const span = rotatedAabbSize(item.size, candidate.rotation);
+          if (span.x > t.x + 1e-8 || span.y > t.y + 1e-8 || span.z > t.z + 1e-8) continue;
+
+          const placement =
+            strategyId === "parallelDiagonal"
+              ? simulateShelfPlacementYZ(span, layout, t, gap)
+              : simulateShelfPlacementXYZ(span, layout, t, gap);
+          if (!placement) continue;
+
+          let score = placement.position.z * 4 + span.z * 0.4 + Math.abs(placement.position.y) * 0.15;
+          if (item.preferFlat && !candidate.isFlat) score += 6;
+          if (!item.preferFlat && candidate.isFlat) score += 0.2;
+          if (strategyId === "parallelDiagonal") {
+            score = placement.position.z * 2.4 + Math.abs(candidate.ryDeg) * -0.05 + span.x * 0.25;
+            if (Math.abs(candidate.ryDeg) < 20) score += 3;
+          }
+          if (strategyId === "flatStack" && !candidate.isFlat) score += 4;
+
+          if (!best || score < best.score) {
+            best = {
+              score,
+              rotation: candidate.rotation,
+              span,
+              ...placement
+            };
+          }
+        }
+
+        return best;
+      }
+
+      function snapshotTransforms() {
+        const snap = new Map();
+        for (const item of state.cargoItems) {
+          snap.set(item.id, { position: item.position.clone(), rotation: item.rotation.clone() });
+        }
+        return snap;
+      }
+
+      function applyTransformPlan(plan) {
+        for (const item of state.cargoItems) {
+          const tf = plan.get(item.id);
+          if (!tf) continue;
+          item.position.copy(tf.position);
+          item.rotation.copy(tf.rotation);
+        }
+      }
+
+      function buildScenario(strategy, gap) {
+        const t = state.trunkSize;
+        const sorted = [...state.cargoItems].sort((a, b) => b.size.x * b.size.y * b.size.z - a.size.x * a.size.y * a.size.z);
+        const layout =
+          strategy.id === "parallelDiagonal"
+            ? { yCursor: -t.y / 2, zCursor: -t.z / 2, rowMaxZ: 0 }
+            : { cursor: new THREE.Vector3(-t.x / 2, -t.y / 2, -t.z / 2), rowMaxY: 0, layerMaxZ: 0 };
+
+        const plan = new Map();
+        let arranged = 0;
+
+        for (const item of sorted) {
+          const picked = choosePlacementForItem(item, layout, gap, strategy.id);
+          if (!picked) {
+            plan.set(item.id, {
+              position: new THREE.Vector3(0, 0, t.z),
+              rotation: new THREE.Euler(0, 0, 0)
+            });
+            continue;
+          }
+
+          plan.set(item.id, {
+            position: picked.position.clone(),
+            rotation: picked.rotation.clone()
+          });
+
+          if (strategy.id === "parallelDiagonal") {
+            layout.yCursor = picked.nextYCursor;
+            layout.zCursor = picked.nextZCursor;
+            layout.rowMaxZ = picked.rowMaxZ;
+          } else {
+            layout.cursor.copy(picked.nextCursor);
+            layout.rowMaxY = picked.rowMaxY;
+            layout.layerMaxZ = picked.layerMaxZ;
+          }
+          arranged += 1;
+        }
+
+        const backup = snapshotTransforms();
+        applyTransformPlan(plan);
+        syncMeshesFromItems();
+        const metrics = computeCargoMetrics(false);
+        applyTransformPlan(backup);
+        syncMeshesFromItems();
+
+        const missCount = state.cargoItems.length - arranged;
+        const score = metrics.fitCount * 100 - metrics.collisionCount * 45 - missCount * 55 - metrics.avgZ * 8;
+
+        return {
+          id: strategy.id,
+          name: strategy.name,
+          description: strategy.description,
+          plan,
+          fitCount: metrics.fitCount,
+          collisionCount: metrics.collisionCount,
+          arrangedCount: arranged,
+          score
+        };
+      }
+
+      function applyArrangementScenario(index) {
+        if (index < 0 || index >= state.arrangementScenarios.length) return;
+        const scenario = state.arrangementScenarios[index];
+        state.activeScenarioIndex = index;
+        applyTransformPlan(scenario.plan);
+        syncMeshesFromItems();
+        state.selectedId = state.selectedId ?? state.cargoItems[0]?.id ?? null;
+        syncTransformUI();
+        refreshCargoList();
+        renderArrangementScenarios();
+        refreshCargoVisual();
+        statusEl.title = `${scenario.name}: ${scenario.description}`;
+      }
+
+      function autoArrange() {
+        if (state.cargoItems.length === 0) return;
+        const gap = clampNum(Number(inputs.autoGap.value) || 0, 0, 0.2);
+        state.arrangementScenarios = arrangementStrategies
+          .map((strategy) => buildScenario(strategy, gap))
+          .sort((a, b) => b.score - a.score);
+        state.activeScenarioIndex = 0;
+        renderArrangementScenarios();
+        applyArrangementScenario(0);
+      }
+
+      document.getElementById("applyTrunk").addEventListener("click", () => {
+        state.trunkSize.set(
+          clampNum(Number(inputs.trunkX.value) || 1, 0.2, 20),
+          clampNum(Number(inputs.trunkY.value) || 1, 0.2, 20),
+          clampNum(Number(inputs.trunkZ.value) || 1, 0.2, 20)
+        );
+        clearArrangementScenarios();
+        buildTrunk();
+        syncTransformUI();
+        refreshCargoVisual();
+      });
+
+      document.getElementById("addCargo").addEventListener("click", () => {
+        const name = inputs.cargoName.value.trim() || "짐";
+        const count = clampNum(Number(inputs.cargoCount.value) || 1, 1, 100);
+        const size = new THREE.Vector3(
+          clampNum(Number(inputs.cargoL.value) || 0.1, 0.01, 50),
+          clampNum(Number(inputs.cargoW.value) || 0.1, 0.01, 50),
+          clampNum(Number(inputs.cargoH.value) || 0.1, 0.01, 50)
+        );
+        const preferFlat = Boolean(inputs.cargoFlat.checked || isDeckLikeName(name));
+        addCargo(name, count, size, preferFlat);
+      });
+
+      document.getElementById("removeCargo").addEventListener("click", removeSelectedCargo);
+      document.getElementById("clearCargo").addEventListener("click", clearAllCargo);
+      document.getElementById("autoArrange").addEventListener("click", autoArrange);
+      document.getElementById("toolTranslate").addEventListener("click", () => setTransformMode("translate"));
+      document.getElementById("toolRotate").addEventListener("click", () => setTransformMode("rotate"));
+      document.getElementById("focusTrunk").addEventListener("click", () => {
+        controls.target.set(0, 0, 0);
+        controls.update();
+      });
+
+      window.addEventListener("keydown", (ev) => {
+        if (ev.key === "t" || ev.key === "T") setTransformMode("translate");
+        if (ev.key === "r" || ev.key === "R") setTransformMode("rotate");
+      });
+
+      document.getElementById("loadBoardPreset").addEventListener("click", () => {
+        clearAllCargo();
+        inputs.trunkX.value = "1.48";
+        inputs.trunkY.value = "1.55";
+        inputs.trunkZ.value = "1.34";
+        state.trunkSize.set(1.48, 1.55, 1.34);
+        buildTrunk();
+        addCargo("보드백", 7, new THREE.Vector3(1.7, 0.35, 0.15), true);
+        autoArrange();
+      });
+
+      for (const id of ["posX", "posY", "posZ", "rotX", "rotY", "rotZ"]) {
+        inputs[id].addEventListener("input", applySelectedTransformFromUI);
+      }
+
+      const axes = new THREE.AxesHelper(1.1);
+      axes.position.set(0, 0, 0);
+      axes.visible = Boolean(inputs.showAxes.checked);
+      scene.add(axes);
+
+      inputs.showAxes.addEventListener("change", () => {
+        axes.visible = Boolean(inputs.showAxes.checked);
+      });
+
+      buildTrunk();
+      addCargo("보드백", 7, new THREE.Vector3(1.7, 0.35, 0.15), true);
+      autoArrange();
+      setTransformMode("translate");
+      controls.target.set(0, 0, 0);
+
+      function animate() {
+        controls.update();
+        renderer.render(scene, camera);
+        requestAnimationFrame(animate);
+      }
+      animate();
+
+      window.addEventListener("resize", () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      statusEl.title = `트렁크 대각 참고: ${formatM(Math.hypot(state.trunkSize.y, state.trunkSize.z))}`;
+      window.__simReady = true;
+    </script>
+  </body>
+</html>
